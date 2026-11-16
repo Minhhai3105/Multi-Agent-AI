@@ -88,7 +88,7 @@ class DemoService:
             "fault": vars(fault) if fault else None,
         }
 
-    def set_fault(self, actor: Actor, mode: str, count: int, kind: str) -> dict:
+    def set_fault(self, actor: Actor, mode: str, count: int, kind: str, skip: int = 0) -> dict:
         require_roles(actor, "admin")
         if not isinstance(self.llm, FaultInjectingLLMClient):
             raise Forbidden("DEMO_MODE đang tắt nên không thể giả lập lỗi")
@@ -96,9 +96,10 @@ class DemoService:
             raise ValidationFailed("mode phải là none | fail_next | fail_always | timeout_next")
         if kind not in ("provider_error", "rate_limit"):
             raise ValidationFailed("kind phải là provider_error | rate_limit")
-        self.llm.configure(mode, count, kind)
+        self.llm.configure(mode, count, kind, skip)
         self.audit.record(actor.id, "demo.set_llm_fault", "system", None,
-                          f"Giả lập lỗi LLM: {mode} x{count} ({kind})", {"mode": mode, "count": count, "kind": kind})
+                          f"Giả lập lỗi LLM: {mode} x{count} ({kind}), bỏ qua {skip} lượt gọi đầu",
+                          {"mode": mode, "count": count, "kind": kind, "skip": skip})
         self.db.commit()
         return self.info()
 

@@ -182,6 +182,7 @@ class FaultIn(BaseModel):
     mode: Literal["none", "fail_next", "fail_always", "timeout_next"]
     count: int = Field(default=1, ge=0, le=10)
     kind: Literal["provider_error", "rate_limit"] = "provider_error"
+    skip: int = Field(default=0, ge=0, le=20)
 
 
 class LatencyIn(BaseModel):

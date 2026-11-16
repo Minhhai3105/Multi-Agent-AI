@@ -205,6 +205,7 @@ class FaultConfig:
     mode: str = "none"  # none | fail_next | fail_always | timeout_next
     remaining: int = 0
     kind: str = "provider_error"  # provider_error | rate_limit
+    skip: int = 0  # let this many calls succeed before the fault starts (e.g. fail from step 2)
     injected_total: int = 0
 
 
@@ -217,10 +218,10 @@ class FaultInjectingLLMClient:
         self._config = FaultConfig()
         self._lock = threading.Lock()
 
-    def configure(self, mode: str, count: int = 1, kind: str = "provider_error") -> FaultConfig:
+    def configure(self, mode: str, count: int = 1, kind: str = "provider_error", skip: int = 0) -> FaultConfig:
         with self._lock:
             self._config = FaultConfig(
-                mode=mode, remaining=max(count, 0), kind=kind,
+                mode=mode, remaining=max(count, 0), kind=kind, skip=max(skip, 0),
                 injected_total=self._config.injected_total,
             )
             return FaultConfig(**vars(self._config))
@@ -232,6 +233,9 @@ class FaultInjectingLLMClient:
     def _should_fail(self) -> str | None:
         with self._lock:
             cfg = self._config
+            if cfg.mode != "none" and cfg.skip > 0:
+                cfg.skip -= 1
+                return None
             if cfg.mode == "fail_always":
                 cfg.injected_total += 1
                 return cfg.kind

@@ -174,7 +174,7 @@ def demo_info(actor: Actor = Depends(get_actor), svc: DemoService = Depends(demo
 
 @router.put("/demo/llm-fault", tags=["demo"])
 def demo_fault(body: FaultIn, actor: Actor = Depends(get_actor), svc: DemoService = Depends(demo_service)):
-    return svc.set_fault(actor, body.mode, body.count, body.kind)
+    return svc.set_fault(actor, body.mode, body.count, body.kind, body.skip)
 
 
 @router.put("/demo/mock-latency", tags=["demo"])
