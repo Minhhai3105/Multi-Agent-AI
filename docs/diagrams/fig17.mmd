@@ -1,0 +1,50 @@
+flowchart TB
+  web["React Web App<br/>«Container»<br/>Chat · Workflows · Tasks · History · Demo"]
+  subgraph BE["FastAPI Backend «Container» – layered modular monolith"]
+    direction TB
+    subgraph L1["HTTP / Security layer"]
+      routers["API Routers<br/><i>thin controllers</i>"]
+      authz["Auth & RBAC<br/><i>JWT · role check · get_actor()</i>"]
+    end
+    subgraph L2["Application / Business layer"]
+      wfs["Workflow Service<br/><i>definitions · validation · start (202)</i>"]
+      coord["Workflow Coordinator<br/><i>sequential steps · retry · resume · recovery</i>"]
+      exec["StepExecutors<br/><i>Agent · User/Approval</i>"]
+      agent["Agent Service<br/><i>configuration only</i>"]
+      know["Knowledge Service «new v1.4»<br/><i>chunking · BM25 retrieval</i>"]
+      task["Task Service<br/><i>task lifecycle · resume callback</i>"]
+      user["User Service"]
+      hist["History & Monitoring<br/><i>paged queries · dashboard</i>"]
+      chat["Chat Service «new v1.4»<br/><i>question = run of a chat workflow</i>"]
+      audit["Activity Log Service<br/><i>same transaction as change</i>"]
+    end
+    subgraph L3["Integration / Persistence layer"]
+      llm["LLM Client<br/><i>Gemini · Mock · FaultInjecting decorator</i>"]
+      parser["Document Parser «new v1.4»<br/><i>txt · md · pdf · docx</i>"]
+      notif["Notification Adapter"]
+      repo["Repository / ORM<br/><i>SQLAlchemy</i>"]
+    end
+  end
+  gemini["Google Gemini API<br/>«External LLM Provider»"]
+  db[("PostgreSQL «Container»<br/>11 tables")]
+  web -->|REST/JSON over HTTPS| routers
+  routers -->|1. validate JWT + role| authz
+  routers -->|2. delegate| L2
+  chat --> wfs
+  wfs -->|schedule run| coord
+  coord --> exec
+  exec -->|config| agent
+  exec -->|retrieve| know
+  exec -->|generate + 1 auto retry| llm
+  exec -->|create step task| task
+  task -. resume_after_task .-> coord
+  know --> parser
+  task --> notif
+  L2 -->|all reads/writes| repo
+  authz --> repo
+  llm -->|HTTPS/JSON| gemini
+  repo -->|SQL| db
+  classDef new fill:#fff4d6,stroke:#d97706,stroke-width:2px;
+  classDef ext fill:#eef2ff,stroke:#4f46e5;
+  class know,chat,parser new;
+  class gemini,db,web ext;

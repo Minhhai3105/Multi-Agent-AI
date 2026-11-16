@@ -1,0 +1,33 @@
+erDiagram
+  users ||--o{ knowledge_documents : "uploaded_by"
+  knowledge_documents ||--|{ knowledge_chunks : "contains"
+  agents }o..o{ knowledge_documents : "knowledge_collection = collection"
+  workflows ||--o{ workflow_steps : "ordered steps"
+  workflow_runs ||--|{ step_runs : "snapshot per run"
+  knowledge_documents {
+    bigint id PK
+    varchar collection "e.g. noi-quy"
+    varchar title
+    varchar filename
+    int char_count
+    int chunk_count
+    bool is_active "soft delete"
+    bigint uploaded_by FK
+  }
+  knowledge_chunks {
+    bigint id PK
+    bigint document_id FK
+    int chunk_index "UNIQUE per document"
+    varchar heading "Chương/Điều"
+    text content
+  }
+  agents {
+    varchar knowledge_collection "NEW nullable"
+  }
+  workflows {
+    bool is_chat "NEW Chat screen"
+  }
+  step_runs {
+    int step_order "NEW denormalised"
+    jsonb step_snapshot "NEW definition at start"
+  }
