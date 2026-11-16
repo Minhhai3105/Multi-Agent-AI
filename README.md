@@ -67,6 +67,7 @@ docker compose run --rm app python scripts/check_llm_connection.py
 | `config_error … HTTP 401` | Sai `LLM_API_KEY`. |
 | `LLM_MODEL=… không có trong danh sách` | Chọn một id trong danh sách script in ra. |
 | `timeout` | Tăng `LLM_TIMEOUT_SECONDS`, vì model thinking chạy chậm. |
+| `LLM_MODEL chưa đặt` | Điền một id trong danh sách script in ra. |
 
 Agent nào có model là `default` thì dùng model trong `.env`, nên đổi model chỉ cần sửa `.env` rồi chạy lại `docker compose up -d --force-recreate app`. Nếu proxy lỗi trong lúc demo, đặt `LLM_PROVIDER=mock` để chạy tiếp bằng LLM mô phỏng.
 

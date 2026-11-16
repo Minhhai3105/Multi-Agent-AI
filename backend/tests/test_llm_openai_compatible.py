@@ -244,3 +244,24 @@ def test_unreachable_gateway_fails_after_exactly_one_retry(client):
     result = run_agent_step(OpenAICompatibleLLMClient(BASE, KEY, "m", transport=httpx.MockTransport(refuse)))
     assert result.status == FAILED and result.retry_count == 1 and calls["n"] == 2
     assert "host.docker.internal:8317" in result.error
+
+
+def test_empty_model_is_a_configuration_error_without_network():
+    def never(request):  # pragma: no cover - must not be called
+        raise AssertionError("no request expected")
+
+    with pytest.raises(LLMError) as err:
+        client_with(never, default_model="").generate(REQ, timeout=5)  # Agent model 'default' + LLM_MODEL=''
+    assert err.value.kind == "config_error" and "LLM_MODEL" in err.value.message
+
+
+def test_empty_env_values_do_not_produce_empty_models(monkeypatch):
+    monkeypatch.setenv("LLM_MODEL", "")
+    monkeypatch.setenv("GEMINI_MODEL", "")
+    get_settings.cache_clear()
+    try:
+        s = get_settings()
+        assert s.llm_model == ""  # explicit: the adapter then raises config_error
+        assert s.gemini_model == "gemini-2.5-flash"  # Gemini keeps a sensible default
+    finally:
+        get_settings.cache_clear()

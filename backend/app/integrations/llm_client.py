@@ -230,7 +230,13 @@ class OpenAICompatibleLLMClient:
             raise LLMError("provider_error", "Phản hồi /models không đúng định dạng OpenAI") from exc
 
     def generate(self, request: LLMRequest, timeout: float) -> LLMResult:
+        self._check_config()
         model = resolve_model(request.model, self.default_model)
+        if not model:
+            raise LLMError(
+                "config_error",
+                "Chưa cấu hình LLM_MODEL (chọn một id trong GET /v1/models - chạy scripts/check_llm_connection.py)",
+            )
         body: dict = {
             "model": model,
             "messages": [

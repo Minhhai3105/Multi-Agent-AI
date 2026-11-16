@@ -70,6 +70,9 @@ def main() -> int:
             print(f"[OK] GET /models: {len(models)} model")
             for m in models:
                 print(f"     - {m}{'   <== LLM_MODEL' if m == s.llm_model else ''}")
+            if not s.llm_model:
+                print("[LỖI] LLM_MODEL chưa đặt - chọn một id ở danh sách trên rồi điền vào .env.")
+                return 1
             if s.llm_model not in models:
                 print(f"[LỖI] LLM_MODEL='{s.llm_model}' không có trong danh sách trên - sửa LLM_MODEL trong .env.")
                 return 1

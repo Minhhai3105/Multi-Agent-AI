@@ -94,13 +94,14 @@ def get_settings() -> Settings:
         jwt_expire_minutes=_int("JWT_EXPIRE_MINUTES", 480),
         llm_provider=os.environ.get("LLM_PROVIDER", "auto").strip().lower(),
         gemini_api_key=os.environ.get("GEMINI_API_KEY") or None,
-        gemini_model=os.environ.get("GEMINI_MODEL", "gemini-2.5-flash"),
+        gemini_model=os.environ.get("GEMINI_MODEL") or "gemini-2.5-flash",
         gemini_base_url=os.environ.get(
             "GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta"
         ),
         llm_base_url=os.environ.get("LLM_BASE_URL") or None,
         llm_api_key=os.environ.get("LLM_API_KEY") or None,
-        llm_model=os.environ.get("LLM_MODEL", "gemini-2.5-flash"),
+        # No silent default: a gateway exposes its own model ids (GET /v1/models).
+        llm_model=(os.environ.get("LLM_MODEL") or "").strip(),
         llm_timeout_seconds=_float("LLM_TIMEOUT_SECONDS", 30.0),
         llm_max_output_tokens=_int("LLM_MAX_OUTPUT_TOKENS", 2048),
         llm_max_prompt_chars=_int("LLM_MAX_PROMPT_CHARS", 12000),
