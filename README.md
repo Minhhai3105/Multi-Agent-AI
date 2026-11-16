@@ -9,7 +9,7 @@ provider (Google Gemini). The platform does not train a model. Human steps (appr
 input) become tasks, and the run resumes when the task is finished. Agents can answer
 from internal documents through RAG, for example the company policy.
 
-Architecture follows *Architecture Design Document v1.4*:
+Architecture follows *Architecture Design Document v1.5*:
 - a layered FastAPI modular monolith (React SPA, FastAPI backend, PostgreSQL);
 - one Workflow Coordinator and one LLM Client adapter;
 - JWT + RBAC and an audit log.
@@ -35,7 +35,41 @@ Mở trình duyệt tại http://localhost:8000.
 | Employee 2 | employee2@company.local | Employee@123 |
 
 Nếu `GEMINI_API_KEY` để trống, hệ thống dùng **LLM mô phỏng (mock)**: chạy offline, không tốn quota.
-Khi điền key, hệ thống tự gọi Gemini. Key chỉ nằm trong `.env` (quy tắc R6), không có trong code hay database.
+Khi điền key Google AI Studio, hệ thống tự gọi Gemini. Nếu dùng proxy như CLIProxyAPI, xem mục bên dưới.
+Key chỉ nằm trong `.env` (quy tắc R6), không có trong code hay database.
+
+### Dùng CLIProxyAPI hoặc gateway OpenAI-compatible
+
+Key CLIProxyAPI là *client access key* do proxy tự kiểm tra, không phải key Google. Vì vậy dùng chế độ `openai_compatible`. Cách gọi giống dự án secretary-schedule: `AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL` bên đó tương ứng với `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL` ở đây.
+
+Trong `.env`:
+
+```
+LLM_PROVIDER=openai_compatible
+LLM_BASE_URL=http://host.docker.internal:8317/v1
+LLM_API_KEY=<client access key của CLIProxyAPI>
+LLM_MODEL=<một id trong GET /v1/models>
+LLM_TIMEOUT_SECONDS=120
+LLM_MAX_OUTPUT_TOKENS=0
+```
+
+Chạy trong Docker thì phải dùng `host.docker.internal`, vì `127.0.0.1` bên trong container là chính container.
+
+Kiểm tra kết nối **từ bên trong container** trước khi chạy workflow. Script liệt kê model, kiểm tra `LLM_MODEL` có trong danh sách và gửi thử một câu; key không bao giờ được in ra:
+
+```bash
+docker compose run --rm app python scripts/check_llm_connection.py
+```
+
+| Script báo | Cách xử lý |
+|---|---|
+| `provider_error: Không kết nối được …` | Proxy chưa chạy, sai cổng, hoặc container không tới được host. Docker Desktop (macOS/Windows) thường tới được proxy chỉ nghe ở `127.0.0.1`. Linux thì không: cần cho proxy nghe ở địa chỉ mà Docker tới được, và chặn cổng đó với mạng ngoài. |
+| `config_error … HTTP 401` | Sai `LLM_API_KEY`. |
+| `LLM_MODEL=… không có trong danh sách` | Chọn một id trong danh sách script in ra. |
+| `timeout` | Tăng `LLM_TIMEOUT_SECONDS`, vì model thinking chạy chậm. |
+| `LLM_MODEL chưa đặt` | Điền một id trong danh sách script in ra. |
+
+Agent nào có model là `default` thì dùng model trong `.env`, nên đổi model chỉ cần sửa `.env` rồi chạy lại `docker compose up -d --force-recreate app`. Nếu proxy lỗi trong lúc demo, đặt `LLM_PROVIDER=mock` để chạy tiếp bằng LLM mô phỏng.
 
 ### Xem database bằng DBeaver
 
@@ -80,7 +114,7 @@ Lệnh `npm run build` build SPA vào `backend/static`. Sau đó FastAPI phục 
 cd backend
 createdb maap_test                                   # database riêng cho test (bị xoá/tạo lại mỗi lần chạy)
 export DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/maap_test
-python -m pytest -v                                  # 41 test: QA-1..QA-6, FR3-FR5, RAG, R1-R6
+python -m pytest -v                                  # 67 test: QA-1..QA-6, FR3-FR5, RAG, R1-R6, LLM adapters
 python scripts/check_architecture.py                 # kiểm tra quy tắc phụ thuộc R2-R6 trong code
 python scripts/qa_benchmark.py --seed-bulk 3400      # thêm ~10.000 step_runs rồi đo QA-3/QA-5
 ```
@@ -106,7 +140,7 @@ Kịch bản demo từng bước nằm ở menu **Demo QA** (tài khoản Admin)
 | Auth & RBAC | `backend/app/api/deps.py` (`get_actor`), `app/services/auth_service.py`, `app/core/security.py` |
 | User / Agent / Workflow / Task Service | `backend/app/services/*_service.py` |
 | Workflow Coordinator + StepExecutor (C4 L4) | `app/services/coordinator.py`, `app/services/step_executors.py` |
-| LLM Client (Gemini, Mock, FaultInjecting) | `app/integrations/llm_client.py` |
+| LLM Client (Gemini, OpenAI-compatible, Mock, FaultInjecting) | `app/integrations/llm_client.py`, `scripts/check_llm_connection.py` |
 | Knowledge Service (RAG, BM25) | `app/services/knowledge/*`, `app/integrations/document_parser.py` |
 | History & Monitoring | `app/services/history_service.py` |
 | Activity Log Service | `app/services/activity_log_service.py` |
@@ -120,5 +154,5 @@ Kịch bản demo từng bước nằm ở menu **Demo QA** (tài khoản Admin)
 backend/   FastAPI (app/api, app/services, app/integrations, app/repositories, app/models), tests/, scripts/
 frontend/  React + Vite SPA
 database/  schema.sql (DDL PostgreSQL để tham khảo / DBeaver)
-docs/      Architecture Design Document v1.4
+docs/      Architecture Design Document v1.5 (v1.3 giữ để so sánh)
 ```

@@ -37,8 +37,11 @@ async def lifespan(app: FastAPI):
         from app.seed import seed_if_empty
 
         seed_if_empty()
+    if settings.effective_llm_provider == "openai_compatible" and not (settings.llm_base_url and settings.llm_api_key):
+        log.warning("LLM_PROVIDER=openai_compatible but LLM_BASE_URL or LLM_API_KEY is empty - Agent steps will fail with config_error")
     repaired = runtime.get_coordinator().recover_interrupted_runs()
-    log.info("LLM provider: %s | startup recovery: %s", settings.effective_llm_provider, repaired)
+    target = settings.llm_base_url if settings.effective_llm_provider == "openai_compatible" else ""
+    log.info("LLM provider: %s %s| startup recovery: %s", settings.effective_llm_provider, f"({target}) " if target else "", repaired)
     yield
     runtime.shutdown()
 

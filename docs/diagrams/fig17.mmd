@@ -19,13 +19,13 @@ flowchart TB
       audit["Activity Log Service<br/><i>same transaction as change</i>"]
     end
     subgraph L3["Integration / Persistence layer"]
-      llm["LLM Client<br/><i>Gemini · Mock · FaultInjecting decorator</i>"]
+      llm["LLM Client<br/><i>Gemini · OpenAI-compatible «v1.5» · Mock<br/>+ FaultInjecting decorator</i>"]
       parser["Document Parser «new v1.4»<br/><i>txt · md · pdf · docx</i>"]
       notif["Notification Adapter"]
       repo["Repository / ORM<br/><i>SQLAlchemy</i>"]
     end
   end
-  gemini["Google Gemini API<br/>«External LLM Provider»"]
+  gemini["External LLM Provider<br/><i>Gemini API, or an OpenAI-compatible<br/>gateway such as CLIProxyAPI</i>"]
   db[("PostgreSQL «Container»<br/>11 tables")]
   web -->|REST/JSON over HTTPS| routers
   routers -->|1. validate JWT + role| authz

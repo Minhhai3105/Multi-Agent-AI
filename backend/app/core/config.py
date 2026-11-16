@@ -36,11 +36,15 @@ class Settings:
     jwt_algorithm: str
     jwt_expire_minutes: int
 
-    # LLM (C2: one primary provider, C6: limited calls/tokens)
-    llm_provider: str  # "auto" | "gemini" | "mock"
+    # LLM (C2: one configured provider at a time, C6: limited calls/tokens)
+    llm_provider: str  # "auto" | "gemini" | "openai_compatible" | "mock"
     gemini_api_key: str | None
     gemini_model: str
     gemini_base_url: str
+    # OpenAI-compatible gateway, e.g. CLIProxyAPI (http://host.docker.internal:8317/v1)
+    llm_base_url: str | None
+    llm_api_key: str | None
+    llm_model: str
     llm_timeout_seconds: float
     llm_max_output_tokens: int
     llm_max_prompt_chars: int
@@ -68,9 +72,10 @@ class Settings:
 
     @property
     def effective_llm_provider(self) -> str:
-        """Gemini is used only when a key is configured; otherwise the mock provider."""
-        if self.llm_provider == "mock":
-            return "mock"
+        """openai_compatible and mock are explicit choices; otherwise Gemini is used only
+        when a Gemini key is configured and the offline mock provider is the fallback."""
+        if self.llm_provider in ("mock", "openai_compatible"):
+            return self.llm_provider
         if self.gemini_api_key:
             return "gemini"
         return "mock"
@@ -89,10 +94,14 @@ def get_settings() -> Settings:
         jwt_expire_minutes=_int("JWT_EXPIRE_MINUTES", 480),
         llm_provider=os.environ.get("LLM_PROVIDER", "auto").strip().lower(),
         gemini_api_key=os.environ.get("GEMINI_API_KEY") or None,
-        gemini_model=os.environ.get("GEMINI_MODEL", "gemini-2.5-flash"),
+        gemini_model=os.environ.get("GEMINI_MODEL") or "gemini-2.5-flash",
         gemini_base_url=os.environ.get(
             "GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta"
         ),
+        llm_base_url=os.environ.get("LLM_BASE_URL") or None,
+        llm_api_key=os.environ.get("LLM_API_KEY") or None,
+        # No silent default: a gateway exposes its own model ids (GET /v1/models).
+        llm_model=(os.environ.get("LLM_MODEL") or "").strip(),
         llm_timeout_seconds=_float("LLM_TIMEOUT_SECONDS", 30.0),
         llm_max_output_tokens=_int("LLM_MAX_OUTPUT_TOKENS", 2048),
         llm_max_prompt_chars=_int("LLM_MAX_PROMPT_CHARS", 12000),

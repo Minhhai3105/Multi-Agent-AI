@@ -26,7 +26,7 @@ export default function ChatPage() {
   useEffect(() => { bottom.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
 
   const poll = async (runId) => {
-    for (let i = 0; i < 240; i += 1) {
+    for (let i = 0; i < 400; i += 1) { // up to ~7 min: 120 s timeout x 2 attempts + RAG
       await new Promise((r) => setTimeout(r, 1000))
       const run = await api.get(`/api/workflow-runs/${runId}`)
       const step = run.steps[0]

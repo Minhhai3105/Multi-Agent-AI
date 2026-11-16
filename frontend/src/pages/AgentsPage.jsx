@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { api } from '../api'
 import { Alert, Badge, Card, Modal, fmtDate, useAsync } from '../components/ui'
 
-const EMPTY = { name: '', role_name: '', instruction: '', model_name: 'gemini-2.5-flash', temperature: 0.3, knowledge_collection: '', is_active: true }
+const EMPTY = { name: '', role_name: '', instruction: '', model_name: 'default', temperature: 0.3, knowledge_collection: '', is_active: true }
 
 function AgentForm({ agent, collections, onClose, onSaved }) {
   const [form, setForm] = useState(agent ? { ...agent, knowledge_collection: agent.knowledge_collection || '' } : EMPTY)
@@ -28,7 +28,7 @@ function AgentForm({ agent, collections, onClose, onSaved }) {
       </div>
       <label>Chỉ dẫn (system instruction)<textarea rows={5} value={form.instruction} onChange={(e) => setForm({ ...form, instruction: e.target.value })} /></label>
       <div className="grid-3">
-        <label>Model<input value={form.model_name} onChange={(e) => setForm({ ...form, model_name: e.target.value })} /></label>
+        <label>Model (<code>default</code> = model trong .env)<input value={form.model_name} onChange={(e) => setForm({ ...form, model_name: e.target.value })} /></label>
         <label>Temperature ({form.temperature})<input type="range" min="0" max="2" step="0.1" value={form.temperature} onChange={(e) => setForm({ ...form, temperature: e.target.value })} /></label>
         <label>Kho tri thức (RAG)
           <select value={form.knowledge_collection} onChange={(e) => setForm({ ...form, knowledge_collection: e.target.value })}>
