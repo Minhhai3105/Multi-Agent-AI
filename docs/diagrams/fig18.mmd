@@ -1,0 +1,41 @@
+sequenceDiagram
+  autonumber
+  actor E as Employee
+  participant UI as React Web App
+  participant API as API Routers + Auth&RBAC
+  participant CH as Chat/Workflow Service
+  participant CO as Workflow Coordinator
+  participant AX as AgentStepExecutor
+  participant KS as Knowledge Service (BM25)
+  participant LLM as LLM Client
+  participant G as Gemini API
+  participant DB as Repository / PostgreSQL
+  E->>UI: Hỏi "Làm thêm giờ ngày lễ được trả bao nhiêu?"
+  UI->>API: POST /api/chat/ask + JWT
+  API->>CH: ask(actor, workflow_id, question)
+  CH->>DB: INSERT workflow_run(running) + step_runs(pending, snapshot) + activity_log
+  CH-->>CO: schedule_run(run_id) (background)
+  CH-->>UI: 202 Accepted {run_id}
+  CO->>DB: claim step_run pending→in_progress (input_context)
+  CO->>AX: execute(step, context)
+  AX->>DB: get Agent config (role, instruction, model, knowledge_collection)
+  AX->>KS: retrieve("noi-quy", question, top_k=4)
+  KS->>DB: load chunks (cached BM25 index, invalidated on upload)
+  KS-->>AX: top chunks + scores (Điều 10. Làm thêm giờ …)
+  AX->>LLM: generate(system prompt + question + [Nguồn n] chunks)
+  LLM->>G: HTTPS generateContent (timeout 30 s)
+  alt transient error (timeout / 429 / 5xx)
+    G-->>LLM: error
+    LLM-->>AX: LLMError(kind)
+    AX->>LLM: automatic retry (exactly once)
+    LLM->>G: HTTPS generateContent
+  end
+  G-->>LLM: answer text
+  LLM-->>AX: LLMResult(text, usage, latency)
+  AX-->>CO: StepResult(done, text, sources, attempts)
+  CO->>DB: step_run=done, workflow_run=completed, final_result(text, sources)
+  loop every 1 s until final
+    UI->>API: GET /api/workflow-runs/{run_id}
+    API-->>UI: status + answer + sources
+  end
+  UI-->>E: Câu trả lời + trích dẫn [Nguồn 1] Điều 10

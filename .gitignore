@@ -18,3 +18,6 @@ frontend/dist/
 .DS_Store
 .idea/
 .vscode/
+
+# CI artifacts
+backend/test-results.xml
