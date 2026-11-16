@@ -88,9 +88,9 @@ class WorkflowCoordinator:
     def schedule_resume(self, step_run_id: int, task_id: int) -> None:
         self.scheduler.submit(self.resume_after_task, step_run_id, task_id)
 
-    def execute_run(self, run_id: int, start_step_run_id: int | None = None) -> None:
+    def execute_run(self, run_id: int, start_step_run_id: int | None = None, retry_note: dict | None = None) -> None:
         with self._run_lock(run_id), self.session_factory() as db:
-            self._advance(db, run_id, start_step_run_id)
+            self._advance(db, run_id, start_step_run_id, retry_note)
 
     def resume_after_task(self, step_run_id: int, task_id: int) -> None:
         with self.session_factory() as db:
@@ -154,7 +154,8 @@ class WorkflowCoordinator:
             {"workflow_run_id": run.id, "previous_error": step.error_message},
         )
         db.commit()
-        self.scheduler.submit(self.execute_run, run.id, step.id)
+        note = {"previous_error": step.error_message, "retried_by": actor.full_name, "retried_at": utcnow().isoformat()}
+        self.scheduler.submit(self.execute_run, run.id, step.id, note)
         db.refresh(step)
         return step
 
@@ -189,8 +190,11 @@ class WorkflowCoordinator:
         return repaired
 
     # ================================================================ internals
-    def _advance(self, db: Session, run_id: int, start_step_run_id: int | None = None) -> None:
+    def _advance(
+        self, db: Session, run_id: int, start_step_run_id: int | None = None, retry_note: dict | None = None
+    ) -> None:
         runs = RunRepository(db)
+        manual_retry_step = start_step_run_id
         while True:
             db.expire_all()
             run = runs.get_run(run_id)
@@ -232,6 +236,8 @@ class WorkflowCoordinator:
                 context = target.input_context or {}
 
             result = self._execute(db, run, target, context)
+            if retry_note and target.id == manual_retry_step and result.output is not None:
+                result.output["manual_retry"] = retry_note  # keep evidence of the earlier failure (QA-4)
 
             if result.status == DONE:
                 runs.update_step_run(

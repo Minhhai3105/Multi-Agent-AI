@@ -34,10 +34,11 @@ def bulk_history(client):
             for i in range(N_RUNS)
         ]
         ids = db.execute(insert(WorkflowRun).returning(WorkflowRun.id), runs).scalars().all()
+        i_of = {rid: i for i, rid in enumerate(ids)}
         steps = [
-            {"workflow_run_id": rid, "step_order": o, "step_type": "agent", "status": "done", "retry_count": 0,
+            {"workflow_run_id": rid, "step_order": o, "step_type": "agent", "status": _step_status(i_of[rid], o), "retry_count": 1 if _step_status(i_of[rid], o) == "failed" else 0,
              "step_snapshot": {"name": f"Bước {o}"}, "agent_id": 3 + o,
-             "output_result": {"text": "kết quả mẫu"}, "started_at": now, "finished_at": now}
+             "output_result": {"text": "kết quả mẫu"} if _step_status(i_of[rid], o) == "done" else None, "started_at": now, "finished_at": now}
             for rid in ids for o in (1, 2, 3)
         ]
         db.execute(insert(StepRun), steps)
@@ -48,6 +49,13 @@ def bulk_history(client):
         db.execute(delete(StepRun).where(StepRun.workflow_run_id.in_(bulk_ids)))
         db.execute(delete(WorkflowRun).where(WorkflowRun.initial_input["bulk_marker"].as_string() == MARKER))
         db.commit()
+
+
+def _step_status(i: int, order: int) -> str:
+    """Failed runs (every 5th) fail at step 2; step 3 never ran."""
+    if i % 5:
+        return "done"
+    return {1: "done", 2: "failed", 3: "pending"}[order]
 
 
 def timed_get(client, url, headers):

@@ -592,7 +592,7 @@ class HistoryRepository:
             )
             .join(Workflow, Workflow.id == WorkflowRun.workflow_id)
             .where(WorkflowRun.status == "failed")
-            .order_by(WorkflowRun.id.desc())
+            .order_by(WorkflowRun.finished_at.desc().nulls_last(), WorkflowRun.id.desc())
             .limit(limit)
         )
         if started_by is not None:
