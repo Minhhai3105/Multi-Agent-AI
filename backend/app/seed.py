@@ -33,7 +33,7 @@ def seed_if_empty() -> bool:
         if UserRepository(db).count() > 0:
             return False
         settings = get_settings()
-        model = settings.gemini_model
+        model = "default"  # follow the provider model configured in .env (LLM_MODEL / GEMINI_MODEL)
 
         users = {}
         for email, name, role, password in DEMO_USERS:

@@ -6,7 +6,12 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.errors import Forbidden, NotFound, ValidationFailed
-from app.integrations.llm_client import FaultInjectingLLMClient, LLMClient, MockLLMClient
+from app.integrations.llm_client import (
+    FaultInjectingLLMClient,
+    LLMClient,
+    MockLLMClient,
+    OpenAICompatibleLLMClient,
+)
 from app.models import WorkflowRun
 from app.repositories.repos import NotificationRepository, RunRepository, WorkflowRepository
 from app.services.activity_log_service import ActivityLogService
@@ -79,10 +84,21 @@ class DemoService:
     def info(self) -> dict:
         inner = self.llm.inner if isinstance(self.llm, FaultInjectingLLMClient) else self.llm
         fault = self.llm.status() if isinstance(self.llm, FaultInjectingLLMClient) else None
+        if isinstance(inner, OpenAICompatibleLLMClient):
+            default_model, base_url = inner.default_model, inner.target
+        elif inner.provider_name == "gemini":
+            default_model, base_url = self.settings.gemini_model, self.settings.gemini_base_url
+        else:
+            default_model, base_url = "mock", None
         return {
             "demo_mode": self.settings.demo_mode,
             "provider": inner.provider_name,
-            "default_model": self.settings.gemini_model,
+            "default_model": default_model,
+            "base_url": base_url,
+            "api_key_configured": bool(
+                self.settings.llm_api_key if inner.provider_name == "openai_compatible"
+                else self.settings.gemini_api_key
+            ),
             "llm_timeout_seconds": self.settings.llm_timeout_seconds,
             "mock_latency_ms": inner.latency_ms if isinstance(inner, MockLLMClient) else None,
             "fault": vars(fault) if fault else None,

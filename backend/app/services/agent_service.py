@@ -66,7 +66,7 @@ class AgentService:
                 name=data["name"].strip(),
                 role_name=data["role_name"].strip(),
                 instruction=data["instruction"].strip(),
-                model_name=data.get("model_name") or "gemini-2.5-flash",
+                model_name=data.get("model_name") or "default",
                 temperature=data.get("temperature", 0.3),
                 knowledge_collection=(data.get("knowledge_collection") or None),
                 is_active=data.get("is_active", True),

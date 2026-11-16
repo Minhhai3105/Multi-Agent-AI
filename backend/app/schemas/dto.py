@@ -66,7 +66,7 @@ class AgentIn(BaseModel):
     name: str = Field(min_length=1, max_length=150)
     role_name: str = Field(min_length=1, max_length=150)
     instruction: str = Field(min_length=1, max_length=8000)
-    model_name: str = Field(default="gemini-2.5-flash", max_length=100)
+    model_name: str = Field(default="default", max_length=100)
     temperature: float = Field(default=0.3, ge=0, le=2)
     knowledge_collection: str | None = Field(default=None, max_length=100)
     is_active: bool = True

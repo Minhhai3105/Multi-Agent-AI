@@ -3,6 +3,12 @@ import { Link } from 'react-router-dom'
 import { api } from '../api'
 import { Alert, Card, useAsync } from '../components/ui'
 
+const PROVIDER_LABEL = {
+  gemini: 'Google Gemini (API trực tiếp)',
+  openai_compatible: 'OpenAI-compatible gateway (vd. CLIProxyAPI)',
+  mock: 'Mock (mô phỏng, không cần API key)',
+}
+
 const SCENARIOS = [
   {
     id: 'QA-1', title: 'Reliability – LLM lỗi tạm thời được retry tự động 1 lần',
@@ -52,7 +58,8 @@ export default function DemoPage() {
       <Alert error={err} onClose={() => setErr(null)} />
       <div className="grid-2">
         <Card title="LLM Client">
-          <p>Nhà cung cấp: <b>{data.provider === 'gemini' ? 'Google Gemini' : 'Mock (mô phỏng, không cần API key)'}</b> · model mặc định {data.default_model}</p>
+          <p>Nhà cung cấp: <b>{PROVIDER_LABEL[data.provider] || data.provider}</b> · model mặc định <code>{data.default_model}</code></p>
+          {data.base_url && <p className="small">Địa chỉ: <code>{data.base_url}</code> · API key: {data.api_key_configured ? 'đã cấu hình' : <b className="err">chưa cấu hình</b>}</p>}
           <p className="small">Timeout LLM: {data.llm_timeout_seconds} s · retry tự động: đúng 1 lần cho lỗi tạm thời (timeout, 429, 5xx)</p>
           {data.mock_latency_ms !== null && (
             <div className="row">

@@ -27,6 +27,11 @@ services:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-maap}:${POSTGRES_PASSWORD:-maap_dev_password}@db:5432/${POSTGRES_DB:-maap}
     ports:
       - "${APP_PORT:-8000}:8000"
+    # Lets the container reach a gateway on the host (e.g. CLIProxyAPI at :8317) via
+    # http://host.docker.internal:8317/v1. Built in on Docker Desktop (macOS/Windows);
+    # this line adds it on Linux.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       db:
         condition: service_healthy
