@@ -1,0 +1,36 @@
+# One-command demo: docker compose up --build
+# Allocation view (Architecture Design 6.3): one application host (FastAPI + React)
+# and one PostgreSQL database. No Kubernetes, broker or extra workers (C3, C7).
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-maap}
+      POSTGRES_USER: ${POSTGRES_USER:-maap}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-maap_dev_password}
+    ports:
+      - "${DB_PORT:-5432}:5432"   # open in DBeaver: localhost:5432 / maap / maap / maap_dev_password
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-maap} -d ${POSTGRES_DB:-maap}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build: .
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-maap}:${POSTGRES_PASSWORD:-maap_dev_password}@db:5432/${POSTGRES_DB:-maap}
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:
