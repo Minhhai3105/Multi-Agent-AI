@@ -24,6 +24,7 @@ CREATE TABLE public.agents (
     id bigint NOT NULL,
     name character varying(150) NOT NULL,
     role_name character varying(150) NOT NULL,
+    description text NOT NULL DEFAULT '',
     instruction text NOT NULL,
     model_name character varying(100) NOT NULL,
     temperature double precision NOT NULL,
@@ -191,6 +192,7 @@ CREATE TABLE public.workflow_steps (
     agent_id bigint,
     assignee_role character varying(20),
     assignee_user_id bigint,
+    instruction_override text,
     config_json jsonb NOT NULL,
     CONSTRAINT ck_workflow_steps_order_positive CHECK ((step_order >= 1)),
     CONSTRAINT ck_workflow_steps_type CHECK (((step_type)::text = ANY ((ARRAY['agent'::character varying, 'user'::character varying, 'approval'::character varying])::text[])))

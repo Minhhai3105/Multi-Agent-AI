@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { api } from '../api'
 import { Alert, Badge, Card, Json, STEP_LABEL, duration, fmtDate, useAsync, usePolling } from '../components/ui'
 
-function StepCard({ step, onRetry, busy }) {
+function StepCard({ step, onRetry, busy, canRetry }) {
   const out = step.output_result || {}
   return (
     <div className={`step step-${step.status}`}>
@@ -28,7 +28,7 @@ function StepCard({ step, onRetry, busy }) {
       {step.error_message && (
         <div className="alert alert-error small">
           <span>{step.error_message}</span>
-          {step.status === 'failed' && <button className="small" disabled={busy} onClick={() => onRetry(step)}>↻ Retry bước này (UC-07)</button>}
+          {step.status === 'failed' && canRetry && <button className="small" disabled={busy} onClick={() => onRetry(step)}>↻ Retry bước này (UC-07)</button>}
         </div>
       )}
       {out.manual_retry && (
@@ -68,6 +68,17 @@ export default function RunDetailPage() {
     } catch (e) { setErr(e) } finally { setBusy(false) }
   }
 
+  const cancel = async () => {
+    const reason = window.prompt('Lý do huỷ lượt chạy (FR3.4)?', '')
+    if (reason === null) return
+    setBusy(true)
+    setErr(null)
+    try {
+      await api.post(`/api/workflow-runs/${id}/cancel`, { reason })
+      await reload()
+    } catch (e) { setErr(e) } finally { setBusy(false) }
+  }
+
   if (error) return <Alert error={error} />
   if (!run) return <div className="muted">Đang tải…</div>
   const done = run.steps.filter((s) => s.status === 'done').length
@@ -76,6 +87,9 @@ export default function RunDetailPage() {
       <div className="page-head">
         <h2>Lượt chạy #{run.id} · {run.workflow_name}</h2>
         <Badge status={run.status} />
+        {['running', 'failed'].includes(run.status) && (
+          <button className="danger" disabled={busy} onClick={cancel}>⏹ Kết thúc / huỷ lượt chạy</button>
+        )}
       </div>
       <div className="progress"><div style={{ width: `${(done / run.steps.length) * 100}%` }} /></div>
       <div className="meta small muted">
@@ -85,7 +99,7 @@ export default function RunDetailPage() {
       {run.error_message && <div className="alert alert-error">{run.error_message}</div>}
       <div className="grid-run">
         <div className="stack">
-          {run.steps.map((s) => <StepCard key={s.id} step={s} onRetry={retry} busy={busy} />)}
+          {run.steps.map((s) => <StepCard key={s.id} step={s} onRetry={retry} busy={busy} canRetry={run.status !== 'cancelled'} />)}
         </div>
         <div className="stack">
           <Card title="Đầu vào"><Json value={run.initial_input} /></Card>

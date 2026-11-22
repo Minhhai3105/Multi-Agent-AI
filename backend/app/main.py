@@ -9,6 +9,7 @@ Startup sequence:
 from __future__ import annotations
 
 import logging
+import mimetypes
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -24,6 +25,13 @@ from app.core.config import get_settings
 from app.core.errors import AppError
 from app.repositories.database import create_schema
 from app.services import runtime
+
+# On Windows, Python reads MIME types from the registry, where .js is often mapped to
+# text/plain; browsers then refuse the SPA's module scripts (blank page). Constraint C1
+# allows running directly on a personal computer, so pin the types explicitly.
+mimetypes.add_type("text/javascript", ".js")
+mimetypes.add_type("text/css", ".css")
+mimetypes.add_type("image/svg+xml", ".svg")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("app")

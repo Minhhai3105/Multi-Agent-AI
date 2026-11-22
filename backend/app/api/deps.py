@@ -68,7 +68,12 @@ def workflow_service(db: Session = Depends(get_db)) -> WorkflowService:
 
 
 def task_service(db: Session = Depends(get_db)) -> TaskService:
-    return TaskService(db, on_step_task_finished=get_coordinator().schedule_resume)
+    coordinator = get_coordinator()
+    return TaskService(
+        db,
+        on_step_task_finished=coordinator.schedule_resume,
+        on_agent_task_started=coordinator.schedule_agent_task,
+    )
 
 
 def history_service(db: Session = Depends(get_db)) -> HistoryService:
@@ -104,6 +109,9 @@ class RetryContext:
 
     def retry(self, actor: Actor, step_run_id: int):
         return self.coordinator.retry_failed_step(self.db, actor, step_run_id)
+
+    def cancel(self, actor: Actor, run_id: int, reason: str | None):
+        return self.coordinator.cancel_run(self.db, actor, run_id, reason)
 
 
 def retry_context(db: Session = Depends(get_db)) -> RetryContext:

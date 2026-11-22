@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import get_settings
@@ -21,8 +21,27 @@ engine = create_engine(
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
 
 
+# Columns added after v1.5. create_all() never alters an existing table, so a database
+# created by an earlier version gets them here (idempotent, additive only).
+_ADDED_COLUMNS = {
+    "agents": {"description": "TEXT NOT NULL DEFAULT ''"},
+    "workflow_steps": {"instruction_override": "TEXT"},
+}
+
+
 def create_schema() -> None:
     Base.metadata.create_all(engine)
+    _add_missing_columns()
+
+
+def _add_missing_columns() -> None:
+    inspector = inspect(engine)
+    with engine.begin() as conn:
+        for table, columns in _ADDED_COLUMNS.items():
+            existing = {c["name"] for c in inspector.get_columns(table)}
+            for name, ddl in columns.items():
+                if name not in existing:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"))
 
 
 def drop_schema() -> None:

@@ -68,6 +68,8 @@ class Agent(TimestampMixin, Base):
     id: Mapped[int] = mapped_column(BigId, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(150))
     role_name: Mapped[str] = mapped_column(String(150))
+    # FR2.2: the Agent's duty/mission in plain words (shown to users; ERD agents.description).
+    description: Mapped[str] = mapped_column(Text, default="")
     instruction: Mapped[str] = mapped_column(Text)
     model_name: Mapped[str] = mapped_column(String(100))
     temperature: Mapped[float] = mapped_column(Float, default=0.3)
@@ -112,6 +114,8 @@ class WorkflowStep(Base):
     agent_id: Mapped[int | None] = mapped_column(ForeignKey("agents.id"), nullable=True)
     assignee_role: Mapped[str | None] = mapped_column(String(20), nullable=True)
     assignee_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    # ERD workflow_steps.instruction_override: extra prompt for this step only (agent steps).
+    instruction_override: Mapped[str | None] = mapped_column(Text, nullable=True)
     config_json: Mapped[dict] = mapped_column(JsonType, default=dict)
 
     workflow: Mapped[Workflow] = relationship(back_populates="steps")

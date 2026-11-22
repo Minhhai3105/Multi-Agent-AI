@@ -15,7 +15,7 @@ from app.repositories.repos import AgentRepository
 from app.services.activity_log_service import ActivityLogService
 from app.services.common import Actor, require_roles
 
-_EDITABLE = ("name", "role_name", "instruction", "model_name", "temperature", "knowledge_collection", "is_active")
+_EDITABLE = ("name", "role_name", "description", "instruction", "model_name", "temperature", "knowledge_collection", "is_active")
 
 
 @dataclass(frozen=True)
@@ -23,6 +23,7 @@ class AgentConfig:
     id: int
     name: str
     role_name: str
+    description: str
     instruction: str
     model_name: str
     temperature: float
@@ -51,6 +52,7 @@ class AgentService:
             id=agent.id,
             name=agent.name,
             role_name=agent.role_name,
+            description=agent.description or "",
             instruction=agent.instruction,
             model_name=agent.model_name,
             temperature=agent.temperature,
@@ -65,6 +67,7 @@ class AgentService:
             Agent(
                 name=data["name"].strip(),
                 role_name=data["role_name"].strip(),
+                description=(data.get("description") or "").strip(),
                 instruction=data["instruction"].strip(),
                 model_name=data.get("model_name") or "default",
                 temperature=data.get("temperature", 0.3),
@@ -87,6 +90,8 @@ class AgentService:
                 value = data[key]
                 if key == "knowledge_collection":
                     value = value or None
+                elif key == "description":
+                    value = (value or "").strip()
                 changes[key] = [str(getattr(agent, key))[:80], str(value)[:80]]
                 setattr(agent, key, value)
         if changes:
@@ -135,6 +140,7 @@ class AgentService:
             "id": agent.id,
             "name": agent.name,
             "role_name": agent.role_name,
+            "description": agent.description or "",
             "instruction": agent.instruction,
             "model_name": agent.model_name,
             "temperature": agent.temperature,

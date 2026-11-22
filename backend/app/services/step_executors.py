@@ -58,16 +58,35 @@ class AgentStepExecutor:
         self.settings = settings
 
     def execute(self, db: Session, run: WorkflowRun, step_run: StepRun, context: dict) -> StepResult:
+        cfg, error = self.load_config(db, step_run.agent_id)
+        if cfg is None:
+            return StepResult(FAILED, error=error)
+        snap = step_run.step_snapshot or {}
+        return self.run_agent(
+            db, cfg, format_input(context.get("initial_input")), context,
+            step_instruction=snap.get("instruction_override"),
+            log_ref=f"run {run.id} step {step_run.step_order}",
+        )
+
+    @staticmethod
+    def load_config(db: Session, agent_id: int | None):
+        """Returns (AgentConfig, None) or (None, error) - Agent Service is the only source."""
         try:
-            cfg = AgentService(db).get_config(step_run.agent_id) if step_run.agent_id else None
+            cfg = AgentService(db).get_config(agent_id) if agent_id else None
         except NotFound:
             cfg = None
         if cfg is None:
-            return StepResult(FAILED, error="config_error: Agent của bước này không còn tồn tại")
+            return None, "config_error: Agent không còn tồn tại"
         if not cfg.is_active:
-            return StepResult(FAILED, error=f"config_error: Agent '{cfg.name}' đang bị vô hiệu hoá")
+            return None, f"config_error: Agent '{cfg.name}' đang bị vô hiệu hoá"
+        return cfg, None
 
-        task_text = format_input(context.get("initial_input"))
+    def run_agent(
+        self, db: Session, cfg, task_text: str, context: dict,
+        step_instruction: str | None = None, log_ref: str = "",
+    ) -> StepResult:
+        """One Agent invocation: optional RAG retrieval, prompt building and the LLM call
+        with exactly one automatic retry. Shared by workflow steps and Agent tasks (FR4.2)."""
         previous = context.get("previous_output") or ""
         sources: list[dict] = []
         knowledge_block = ""
@@ -89,7 +108,7 @@ class AgentStepExecutor:
                 knowledge_block = "(Không tìm thấy đoạn tài liệu nào liên quan trong bộ tri thức.)"
 
         request = LLMRequest(
-            system_prompt=self._system_prompt(cfg, has_knowledge=bool(cfg.knowledge_collection)),
+            system_prompt=self._system_prompt(cfg, bool(cfg.knowledge_collection), step_instruction),
             user_prompt=self._user_prompt(task_text, context, previous, knowledge_block),
             model=cfg.model_name,
             temperature=cfg.temperature,
@@ -102,7 +121,7 @@ class AgentStepExecutor:
                 result = self.llm.generate(request, timeout=self.settings.llm_timeout_seconds)
             except LLMError as exc:
                 attempts.append({"attempt": attempt + 1, "error": exc.kind, "message": exc.message})
-                log.warning("Run %s step %s attempt %s failed: %s", run.id, step_run.step_order, attempt + 1, exc)
+                log.warning("%s attempt %s failed: %s", log_ref, attempt + 1, exc)
                 if exc.kind not in _TRANSIENT:
                     break  # configuration errors are not retried (C6: do not waste quota)
                 continue
@@ -132,7 +151,7 @@ class AgentStepExecutor:
         )
 
     @staticmethod
-    def _system_prompt(cfg, has_knowledge: bool) -> str:
+    def _system_prompt(cfg, has_knowledge: bool, step_instruction: str | None = None) -> str:
         rules = [
             "Trả lời bằng tiếng Việt, rõ ràng, đúng vai trò được giao.",
             "Kết quả của bạn sẽ được chuyển cho bước tiếp theo trong quy trình, hãy trình bày có cấu trúc.",
@@ -143,10 +162,12 @@ class AgentStepExecutor:
                 "trích dẫn dạng [Nguồn n]. Nếu tài liệu không đề cập, hãy nói rõ là không tìm thấy "
                 "trong tài liệu, không tự suy đoán."
             )
+        duty = f"Nhiệm vụ: {cfg.description}\n" if cfg.description else ""
+        step = f"\nChỉ dẫn riêng cho bước này:\n{step_instruction.strip()}\n" if step_instruction else ""
         return (
             "Bạn là một AI Agent trong nền tảng đa tác tử tự động hoá quy trình doanh nghiệp.\n"
-            f"Tên Agent: {cfg.name}\nVai trò: {cfg.role_name}\n\n"
-            f"Chỉ dẫn:\n{cfg.instruction}\n\nQuy tắc:\n- " + "\n- ".join(rules)
+            f"Tên Agent: {cfg.name}\nVai trò: {cfg.role_name}\n{duty}\n"
+            f"Chỉ dẫn:\n{cfg.instruction}\n{step}\nQuy tắc:\n- " + "\n- ".join(rules)
         )
 
     def _user_prompt(self, task_text: str, context: dict, previous: str, knowledge: str) -> str:
@@ -187,7 +208,7 @@ class UserApprovalStepExecutor:
             f"{'Phê duyệt' if is_approval else 'Xử lý'}: {snap.get('name', 'bước ' + str(step_run.step_order))} (lượt chạy #{run.id})"
         )
         description = (
-            f"{config.get('instructions', '')}\n\n"
+            f"{config.get('instructions') or snap.get('instruction_override') or ''}\n\n"
             f"Yêu cầu ban đầu:\n{format_input(run.initial_input)}\n\n"
             f"Kết quả từ bước trước:\n{previous}"
         ).strip()

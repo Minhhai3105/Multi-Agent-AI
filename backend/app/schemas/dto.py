@@ -65,6 +65,7 @@ class UserPage(BaseModel):
 class AgentIn(BaseModel):
     name: str = Field(min_length=1, max_length=150)
     role_name: str = Field(min_length=1, max_length=150)
+    description: str = Field(default="", max_length=4000)
     instruction: str = Field(min_length=1, max_length=8000)
     model_name: str = Field(default="default", max_length=100)
     temperature: float = Field(default=0.3, ge=0, le=2)
@@ -75,6 +76,7 @@ class AgentIn(BaseModel):
 class AgentUpdateIn(BaseModel):
     name: str | None = Field(default=None, max_length=150)
     role_name: str | None = Field(default=None, max_length=150)
+    description: str | None = Field(default=None, max_length=4000)
     instruction: str | None = Field(default=None, max_length=8000)
     model_name: str | None = Field(default=None, max_length=100)
     temperature: float | None = Field(default=None, ge=0, le=2)
@@ -90,6 +92,7 @@ class WorkflowStepIn(BaseModel):
     agent_id: int | None = None
     assignee_role: Role | None = None
     assignee_user_id: int | None = None
+    instruction_override: str | None = Field(default=None, max_length=4000)
     config_json: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -117,6 +120,10 @@ class RunAcceptedOut(BaseModel):
     run_id: int
     status: str
     status_url: str
+
+
+class RunCancelIn(BaseModel):
+    reason: str | None = Field(default=None, max_length=500)
 
 
 class StepRetryOut(BaseModel):

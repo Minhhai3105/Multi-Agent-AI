@@ -2,14 +2,14 @@ import { useState } from 'react'
 import { api } from '../api'
 import { Alert, Badge, Card, Modal, fmtDate, useAsync } from '../components/ui'
 
-const EMPTY = { name: '', role_name: '', instruction: '', model_name: 'default', temperature: 0.3, knowledge_collection: '', is_active: true }
+const EMPTY = { name: '', role_name: '', description: '', instruction: '', model_name: 'default', temperature: 0.3, knowledge_collection: '', is_active: true }
 
 function AgentForm({ agent, collections, onClose, onSaved }) {
   const [form, setForm] = useState(agent ? { ...agent, knowledge_collection: agent.knowledge_collection || '' } : EMPTY)
   const [error, setError] = useState(null)
   const save = async () => {
     const body = {
-      name: form.name, role_name: form.role_name, instruction: form.instruction, model_name: form.model_name,
+      name: form.name, role_name: form.role_name, description: form.description || '', instruction: form.instruction, model_name: form.model_name,
       temperature: Number(form.temperature), knowledge_collection: form.knowledge_collection || null, is_active: form.is_active,
     }
     try {
@@ -26,6 +26,7 @@ function AgentForm({ agent, collections, onClose, onSaved }) {
         <label>Tên Agent<input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></label>
         <label>Vai trò<input value={form.role_name} onChange={(e) => setForm({ ...form, role_name: e.target.value })} /></label>
       </div>
+      <label>Nhiệm vụ (mô tả ngắn cho người dùng)<input value={form.description || ''} placeholder="VD: Kiểm tra đơn nghỉ phép theo nội quy" onChange={(e) => setForm({ ...form, description: e.target.value })} /></label>
       <label>Chỉ dẫn (system instruction)<textarea rows={5} value={form.instruction} onChange={(e) => setForm({ ...form, instruction: e.target.value })} /></label>
       <div className="grid-3">
         <label>Model (<code>default</code> = model trong .env)<input value={form.model_name} onChange={(e) => setForm({ ...form, model_name: e.target.value })} /></label>
@@ -69,6 +70,7 @@ export default function AgentsPage() {
           <Card key={a.id} title={<>🤖 {a.name}</>} actions={<Badge status={a.is_active ? 'active' : 'inactive'} />}>
             <div className="small"><b>{a.role_name}</b> · {a.model_name} · t={a.temperature}</div>
             {a.knowledge_collection && <div className="tag">📚 RAG: {a.knowledge_collection}</div>}
+            {a.description && <p className="small">🎯 {a.description}</p>}
             <p className="small muted clamp">{a.instruction}</p>
             <div className="tiny muted">
               Đã chạy {a.total_runs} bước · {a.done_runs} thành công · {a.failed_runs} thất bại

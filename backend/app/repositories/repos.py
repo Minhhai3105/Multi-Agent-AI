@@ -219,6 +219,17 @@ class RunRepository:
         )
         return result.rowcount == 1
 
+    def claim_run(self, run_id: int, expected_statuses: tuple[str, ...], new_status: str, **values) -> bool:
+        """Conditional run status change: a cancelled run is never overwritten by a
+        background job that finishes later (FR3.4)."""
+        result = self.db.execute(
+            update(WorkflowRun)
+            .where(WorkflowRun.id == run_id, WorkflowRun.status.in_(expected_statuses))
+            .values(status=new_status, **values)
+            .execution_options(synchronize_session=False)
+        )
+        return result.rowcount == 1
+
     def update_run(self, run_id: int, **values) -> None:
         self.db.execute(
             update(WorkflowRun)
@@ -311,6 +322,21 @@ class TaskRepository:
         order = case((Task.status.in_(("todo", "in_progress")), 0), else_=1)
         rows = self.db.scalars(_page(stmt.order_by(order, Task.id.desc()), page, page_size)).all()
         return list(rows), total
+
+    def interrupted_agent_tasks(self) -> list[Task]:
+        """Manual tasks left in_progress by an Agent whose background thread died.
+
+        Only tasks started through run-agent (result.agent_running) qualify; a task a
+        person moved to in_progress by hand is legitimate work and is left alone.
+        """
+        rows = self.db.scalars(
+            select(Task).where(
+                Task.task_type == "manual",
+                Task.assigned_agent_id.is_not(None),
+                Task.status == "in_progress",
+            )
+        ).all()
+        return [t for t in rows if (t.result or {}).get("agent_running")]
 
     def by_step_run(self, step_run_id: int) -> list[Task]:
         return list(self.db.scalars(select(Task).where(Task.step_run_id == step_run_id)).all())

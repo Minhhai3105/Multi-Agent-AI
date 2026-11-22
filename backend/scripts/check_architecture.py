@@ -12,7 +12,7 @@ verifies the documented rules:
   R4  Only app.integrations.llm_client talks to the LLM provider (httpx), and
       AgentService never imports the LLM client.
   R5  No cyclic dependencies between modules; only coordinator.py changes a run's
-      status (update_run(..., status=...)).
+      status (update_run(..., status=...) or claim_run(...)).
   R6  os.environ / os.getenv are read only in app.core.config.
   L   Layer direction: lower layers never import higher ones
       (repositories/integrations/models -/-> services/api; services -/-> api).
@@ -38,31 +38,37 @@ def module_name(path: Path) -> str:
     return ".".join(parts)
 
 
+def scan_source(source: str, filename: str = "<module>") -> dict:
+    """Facts the rules need from one module: imports, env reads and run-status changes.
+
+    A run's status changes through update_run(..., status=...) or claim_run(...), whose
+    new status is a positional argument, so every claim_run call counts (R5).
+    """
+    tree = ast.parse(source, filename=filename)
+    imports: list[tuple[str, list[str], int]] = []
+    env_reads: list[int] = []
+    run_status_updates: list[int] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                imports.append((alias.name, [], node.lineno))
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imports.append((node.module, [a.name for a in node.names], node.lineno))
+        elif isinstance(node, ast.Attribute) and node.attr in ("environ", "getenv"):
+            if isinstance(node.value, ast.Name) and node.value.id == "os":
+                env_reads.append(node.lineno)
+        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+            attr = node.func.attr
+            if attr == "claim_run" or (attr == "update_run" and any(k.arg == "status" for k in node.keywords)):
+                run_status_updates.append(node.lineno)
+    return {"imports": imports, "env_reads": env_reads, "run_status_updates": run_status_updates}
+
+
 def collect() -> dict[str, dict]:
     modules = {}
     for path in APP.rglob("*.py"):
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        imports: list[tuple[str, list[str], int]] = []
-        env_reads: list[int] = []
-        run_status_updates: list[int] = []
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                for alias in node.names:
-                    imports.append((alias.name, [], node.lineno))
-            elif isinstance(node, ast.ImportFrom) and node.module:
-                imports.append((node.module, [a.name for a in node.names], node.lineno))
-            elif isinstance(node, ast.Attribute) and node.attr in ("environ", "getenv"):
-                if isinstance(node.value, ast.Name) and node.value.id == "os":
-                    env_reads.append(node.lineno)
-            elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-                if node.func.attr == "update_run" and any(k.arg == "status" for k in node.keywords):
-                    run_status_updates.append(node.lineno)
-        modules[module_name(path)] = {
-            "path": path.relative_to(ROOT),
-            "imports": imports,
-            "env_reads": env_reads,
-            "run_status_updates": run_status_updates,
-        }
+        facts = scan_source(path.read_text(encoding="utf-8"), str(path))
+        modules[module_name(path)] = {"path": path.relative_to(ROOT), **facts}
     return modules
 
 
