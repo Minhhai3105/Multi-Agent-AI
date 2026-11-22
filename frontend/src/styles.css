@@ -162,3 +162,10 @@ td.actions { white-space: nowrap; display: flex; gap: 6px; }
   .brand small, .sidebar-foot { display: none; } .brand { font-size: 0; } .brand::first-letter { font-size: 22px; }
 }
 .step-edit .step-instr { grid-column: 2 / -1; min-height: 32px; font-size: 12px; }
+.step-edit > * { min-width: 0; }
+@media (max-width: 820px) {
+  .step-edit { grid-template-columns: 26px 1fr 1fr; }
+  .step-edit > select:first-of-type { grid-column: 2 / -1; }
+  .step-edit .step-instr { grid-column: 1 / -1; }
+  .modal { padding: 14px; }
+}
