@@ -94,3 +94,10 @@ def test_architecture_checker_detects_violations():
     }
     rules = {v.split("]")[0].strip("[") for v in check_architecture.check(fake)}
     assert {"R2", "R3", "R4", "R5", "R6"} <= rules
+
+    # R5 also covers claim_run(), whose new status is positional.
+    src = "def f(runs):\n    runs.claim_run(1, ('failed',), 'running')\n"
+    facts = check_architecture.scan_source(src)
+    assert facts["run_status_updates"] == [2]
+    rogue = {"app.services.task_service": {"path": Path("app/services/task_service.py"), **facts}}
+    assert any(v.startswith("[R5]") for v in check_architecture.check(rogue))

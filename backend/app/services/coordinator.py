@@ -41,6 +41,7 @@ from app.services.step_executors import (
 
 log = logging.getLogger(__name__)
 INTERRUPTED = "interrupted: tiến trình backend dừng khi bước đang chạy (khởi động lại để retry)"
+AGENT_TASK_INTERRUPTED = "interrupted: tiến trình backend dừng khi Agent đang xử lý task (bấm 'Chạy lại bằng Agent')"
 
 
 class RunScheduler:
@@ -150,7 +151,11 @@ class WorkflowCoordinator:
         )
         if not claimed:
             raise Conflict("Bước này không ở trạng thái failed hoặc đang được retry", code="step_not_failed")
-        runs.update_run(run.id, status="running", error_message=None, finished_at=None)
+        # Conditional, in the same transaction as the step claim: a cancel committed after
+        # the check above makes this claim fail, and the rollback undoes the step claim.
+        if not runs.claim_run(run.id, ("failed",), "running", error_message=None, finished_at=None):
+            db.rollback()
+            raise Conflict("Lượt chạy đã bị huỷ hoặc không còn ở trạng thái failed", code="run_cancelled")
         ActivityLogService(db).record(
             actor.id, "step_run.manual_retry", "step_run", step.id,
             f"Retry thủ công bước {step.step_order} của lượt chạy #{run.id}",
@@ -270,8 +275,20 @@ class WorkflowCoordinator:
                 runs.update_step_run(first.id, status="failed", error_message=msg, finished_at=utcnow())
                 self._fail_run(db, run.id, first, msg, notify=False)
                 repaired["runs_failed"] += 1
+            # FR4.2: a manual task an Agent was processing has no thread left either. Fail it
+            # so the UI offers "Chạy lại bằng Agent" instead of a task stuck in_progress.
+            tasks = TaskRepository(db)
+            repaired["agent_tasks_failed"] = 0
+            for task in tasks.interrupted_agent_tasks():
+                result = {**(task.result or {}), "executed_by": "agent", "error": AGENT_TASK_INTERRUPTED}
+                if tasks.change_status(task.id, "in_progress", "failed", result=result):
+                    ActivityLogService(db).record(
+                        None, "task.agent_fail", "task", task.id, f"Task '{task.title}': {AGENT_TASK_INTERRUPTED}",
+                        {"agent_id": task.assigned_agent_id, "error": AGENT_TASK_INTERRUPTED},
+                    )
+                    repaired["agent_tasks_failed"] += 1
             db.commit()
-        if repaired["runs_failed"]:
+        if repaired["runs_failed"] or repaired["agent_tasks_failed"]:
             log.warning("Startup recovery: %s", repaired)
         return repaired
 

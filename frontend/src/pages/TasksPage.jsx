@@ -210,7 +210,7 @@ export default function TasksPage() {
                   <td className={`small ${t.is_overdue ? 'err' : ''}`}>{fmtDate(t.deadline)}{t.is_overdue ? ' (quá hạn)' : ''}</td>
                   <td><Badge status={t.status} /></td>
                   <td className="actions">
-                    {['todo', 'in_progress'].includes(t.status) && (t.assigned_user_id === auth.user.id || canManage) && !(agentTask && !t.assigned_user_id) && (
+                    {['todo', 'in_progress'].includes(t.status) && (t.assigned_user_id === auth.user.id || canManage) && !(agentTask && (!t.assigned_user_id || t.result?.agent_running)) && (
                       <>
                         {t.status === 'todo' && t.task_type === 'manual' && <button className="small" onClick={() => quick(t, 'in_progress')}>Bắt đầu</button>}
                         {t.task_type === 'manual'
@@ -221,7 +221,7 @@ export default function TasksPage() {
                     {canManage && agentTask && ['todo', 'failed'].includes(t.status) && (
                       <button className="small primary" onClick={() => runAgent(t)}>🤖 {t.status === 'failed' ? 'Chạy lại' : 'Chạy'} bằng Agent</button>
                     )}
-                    {agentTask && t.status === 'in_progress' && !t.assigned_user_id && <span className="tiny muted">Agent đang xử lý…</span>}
+                    {agentTask && t.status === 'in_progress' && t.result?.agent_running && <span className="tiny muted">Agent đang xử lý…</span>}
                     {canManage && t.task_type === 'manual' && t.status !== 'done' && t.status !== 'in_progress' && (
                       <button className="small" onClick={() => setReassigning(t)}>Giao lại…</button>
                     )}

@@ -210,7 +210,8 @@ class TaskService:
         if old_status not in ("todo", "failed"):
             raise Conflict(f"Chỉ chạy được task ở trạng thái 'todo' hoặc 'failed' (hiện tại: '{old_status}')",
                            code="invalid_transition")
-        if not self.repo.change_status(task.id, old_status, "in_progress", result=None):
+        # agent_running marks work owned by a background thread (startup recovery uses it).
+        if not self.repo.change_status(task.id, old_status, "in_progress", result={"agent_running": True}):
             raise Conflict("Task vừa được người khác cập nhật, hãy tải lại", code="concurrent_update")
         self.audit.record(actor.id, "task.run_agent", "task", task.id,
                           f"Giao Agent '{agent.name}' xử lý task '{task.title}'",

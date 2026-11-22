@@ -161,3 +161,79 @@ def test_failed_manual_task_can_be_reassigned_and_reopened(client, tokens):
     r = client.put(f"/api/tasks/{task['id']}", json={"assigned_user_id": 4, "status": "todo"}, headers=mgr)
     assert r.status_code == 200, r.text
     assert r.json()["status"] == "todo" and r.json()["assigned_user_id"] == 4
+
+
+# ------------------------------------------------------------------ review fixes (PR #3)
+def test_startup_recovery_fails_interrupted_agent_tasks_only(client, tokens):
+    """An Agent task whose background thread died is failed at startup and can be run
+    again; a task a person moved to in_progress by hand is left alone."""
+    from app.repositories.database import SessionLocal
+    from app.repositories.repos import TaskRepository
+    from app.services import runtime
+
+    mgr = tokens["manager"]
+    agent = _agent(client, tokens)
+    stuck = client.post("/api/tasks", json={"title": "Agent bị gián đoạn", "assigned_agent_id": agent["id"]},
+                        headers=mgr).json()
+    human = client.post("/api/tasks", json={"title": "Người đang làm", "assigned_user_id": 3,
+                                            "assigned_agent_id": agent["id"]}, headers=mgr).json()
+    assert client.put(f"/api/tasks/{human['id']}", json={"status": "in_progress"}, headers=mgr).status_code == 200
+    with SessionLocal() as db:  # simulate run-agent claimed the task, then the process died
+        assert TaskRepository(db).change_status(stuck["id"], "todo", "in_progress", result={"agent_running": True})
+        db.commit()
+
+    report = runtime.get_coordinator().recover_interrupted_runs()
+    assert report["agent_tasks_failed"] == 1
+
+    failed = client.get(f"/api/tasks/{stuck['id']}", headers=mgr).json()
+    assert failed["status"] == "failed" and failed["result"]["error"].startswith("interrupted")
+    assert client.get(f"/api/tasks/{human['id']}", headers=mgr).json()["status"] == "in_progress"
+
+    # the UI's "Chạy lại bằng Agent" path works again
+    assert client.post(f"/api/tasks/{stuck['id']}/run-agent", headers=mgr).status_code == 202
+    assert _wait_task(client, mgr, stuck["id"])["status"] == "done"
+
+
+def test_retry_cannot_revive_a_cancelled_run(client, tokens):
+    """A cancel committed between the retry's status check and its claim must win:
+    the conditional run claim fails, the step claim is rolled back, 409 is returned."""
+    from app.repositories.database import SessionLocal
+    from app.repositories.repos import RunRepository
+    from app.services import runtime
+    from app.services.common import Actor
+
+    mgr = tokens["manager"]
+    client.put("/api/demo/llm-fault", json={"mode": "fail_always"}, headers=tokens["admin"])
+    agent = _agent(client, tokens)
+    wf = client.post("/api/workflows", json={"name": "Retry vs huỷ", "steps": [
+        {"step_type": "agent", "name": "Bước lỗi", "agent_id": agent["id"]}]}, headers=mgr).json()
+    run_id = start_run(client, mgr, wf["id"])
+    run = wait_run(client, mgr, run_id)
+    assert run["status"] == "failed"
+    step_id = run["steps"][0]["id"]
+
+    class CancelledDuringCheck(RunRepository):
+        """Lets the status check pass, then a concurrent cancel lands before the claim."""
+        def claim_run(self, run_id, expected, new_status, **values):
+            with SessionLocal() as other:
+                RunRepository(other).update_run(run_id, status="cancelled")
+                other.commit()
+            return super().claim_run(run_id, expected, new_status, **values)
+
+    import app.services.coordinator as coordinator_module
+    original = coordinator_module.RunRepository
+    coordinator_module.RunRepository = CancelledDuringCheck
+    try:
+        with SessionLocal() as db:
+            actor = Actor(id=2, email="manager@company.local", full_name="M", role="manager")
+            try:
+                runtime.get_coordinator().retry_failed_step(db, actor, step_id)
+                raise AssertionError("retry should have been rejected")
+            except Exception as exc:  # Conflict
+                assert getattr(exc, "status_code", None) == 409 and exc.code == "run_cancelled"
+    finally:
+        coordinator_module.RunRepository = original
+
+    after = client.get(f"/api/workflow-runs/{run_id}", headers=mgr).json()
+    assert after["status"] == "cancelled"
+    assert after["steps"][0]["status"] == "failed"  # the step claim was rolled back
