@@ -112,6 +112,7 @@ Lệnh `npm run build` build SPA vào `backend/static`. Sau đó FastAPI phục 
 
 ```bash
 cd backend
+pip install -r requirements-dev.txt                  # thêm pytest (image Docker chỉ cài requirements.txt)
 createdb maap_test                                   # database riêng cho test (bị xoá/tạo lại mỗi lần chạy)
 export DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/maap_test
 python -m pytest -v                                  # 67 test: QA-1..QA-6, FR3-FR5, RAG, R1-R6, LLM adapters

@@ -58,7 +58,7 @@ def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(
         title=settings.app_name,
-        version="1.4.0",
+        version="1.5.0",
         description="Multi-Agent AI Platform for Business Process Automation and Work Coordination",
         lifespan=lifespan,
     )
