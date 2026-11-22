@@ -131,6 +131,18 @@ python scripts/qa_benchmark.py --seed-bulk 3400      # thêm ~10.000 step_runs r
 
 Kịch bản demo từng bước nằm ở menu **Demo QA** (tài khoản Admin).
 
+### Bổ sung sau v1.5 (hoàn thiện FR còn thiếu)
+
+| Yêu cầu | Đã làm | API / màn hình |
+|---|---|---|
+| FR2.2 – nhiệm vụ của Agent | Cột `agents.description` theo ERD | Form Agent, thẻ Agent |
+| ERD `workflow_steps.instruction_override` | Chỉ dẫn riêng cho từng bước; bước Agent ghép vào system prompt, bước người dùng dùng làm hướng dẫn task | Form workflow (ô dưới mỗi bước) |
+| FR3.4 – kết thúc workflow | Huỷ lượt chạy đang chạy/đang lỗi: giữ bước đã xong, đóng task đang chờ, ghi `activity_logs`, không retry được nữa | `POST /api/workflow-runs/{id}/cancel`, nút “Kết thúc / huỷ” ở chi tiết lượt chạy |
+| FR4.2 / FR4.5 – task giao cho Agent | Agent xử lý task thủ công qua cùng đường LLM (RAG, timeout, retry 1 lần); chạy lại khi lỗi; giao lại task | `POST /api/tasks/{id}/run-agent`, nút “Chạy bằng Agent”, “Giao lại…” |
+
+Database cũ (tạo bởi bản trước) được tự bổ sung 2 cột mới khi backend khởi động (`create_schema()`), không mất dữ liệu.
+Test: `tests/test_fr_completion.py`.
+
 ## 4. Ánh xạ code ↔ kiến trúc
 
 | Thành phần kiến trúc (C&C / Module view) | Code |

@@ -10,6 +10,7 @@ from app.schemas.dto import (
     AgentIn,
     AgentUpdateIn,
     RunAcceptedOut,
+    RunCancelIn,
     RunStartIn,
     StepRetryOut,
     WorkflowIn,
@@ -90,6 +91,15 @@ def run_workflow(
 @router.get("/workflow-runs/{run_id}")
 def get_run(run_id: int, actor: Actor = Depends(get_actor), svc: HistoryService = Depends(history_service)):
     return svc.run_detail(actor, run_id)
+
+
+@router.post("/workflow-runs/{run_id}/cancel")
+def cancel_run(
+    run_id: int, body: RunCancelIn | None = None, actor: Actor = Depends(get_actor),
+    ctx: RetryContext = Depends(retry_context),
+):
+    run = ctx.cancel(actor, run_id, body.reason if body else None)
+    return {"run_id": run.id, "status": run.status, "error_message": run.error_message}
 
 
 @router.post("/step-runs/{step_run_id}/retry", status_code=status.HTTP_202_ACCEPTED, response_model=StepRetryOut)

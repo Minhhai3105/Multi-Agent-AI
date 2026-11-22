@@ -219,6 +219,17 @@ class RunRepository:
         )
         return result.rowcount == 1
 
+    def claim_run(self, run_id: int, expected_statuses: tuple[str, ...], new_status: str, **values) -> bool:
+        """Conditional run status change: a cancelled run is never overwritten by a
+        background job that finishes later (FR3.4)."""
+        result = self.db.execute(
+            update(WorkflowRun)
+            .where(WorkflowRun.id == run_id, WorkflowRun.status.in_(expected_statuses))
+            .values(status=new_status, **values)
+            .execution_options(synchronize_session=False)
+        )
+        return result.rowcount == 1
+
     def update_run(self, run_id: int, **values) -> None:
         self.db.execute(
             update(WorkflowRun)

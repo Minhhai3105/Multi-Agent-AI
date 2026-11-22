@@ -76,6 +76,7 @@ function WorkflowEditor({ workflow, agents, onClose, onSaved }) {
         step_order: i + 1, step_type: s.step_type, name: s.name,
         agent_id: s.step_type === 'agent' ? Number(s.agent_id) || null : null,
         assignee_role: s.step_type === 'agent' ? null : s.assignee_role,
+        instruction_override: (s.instruction_override || '').trim() || null,
         config_json: s.config_json || {},
       })),
     }
@@ -120,6 +121,9 @@ function WorkflowEditor({ workflow, agents, onClose, onSaved }) {
           <button disabled={i === 0} onClick={() => move(i, -1)}>↑</button>
           <button disabled={i === form.steps.length - 1} onClick={() => move(i, 1)}>↓</button>
           <button className="danger" onClick={() => setForm({ ...form, steps: form.steps.filter((_, j) => j !== i) })}>✕</button>
+          <textarea className="step-instr" rows={1}
+            placeholder={s.step_type === 'agent' ? 'Chỉ dẫn riêng cho bước này (tuỳ chọn, bổ sung cho chỉ dẫn của Agent)' : 'Hướng dẫn cho người xử lý (tuỳ chọn)'}
+            value={s.instruction_override || ''} onChange={(e) => setStep(i, { instruction_override: e.target.value })} />
         </div>
       ))}
       <button onClick={() => setForm({ ...form, steps: [...form.steps, { ...EMPTY_STEP }] })}>+ Thêm bước</button>

@@ -161,3 +161,4 @@ td.actions { white-space: nowrap; display: flex; gap: 6px; }
   .sidebar { width: 64px; } .sidebar nav a { font-size: 0; justify-content: center; } .sidebar nav a span { font-size: 18px; }
   .brand small, .sidebar-foot { display: none; } .brand { font-size: 0; } .brand::first-letter { font-size: 22px; }
 }
+.step-edit .step-instr { grid-column: 2 / -1; min-height: 32px; font-size: 12px; }

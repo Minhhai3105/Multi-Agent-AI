@@ -64,6 +64,11 @@ def update_task(
     return svc.update(actor, task_id, body.model_dump(exclude_unset=True))
 
 
+@router.post("/tasks/{task_id}/run-agent", status_code=status.HTTP_202_ACCEPTED, tags=["tasks"])
+def run_task_with_agent(task_id: int, actor: Actor = Depends(get_actor), svc: TaskService = Depends(task_service)):
+    return svc.run_with_agent(actor, task_id)
+
+
 # ------------------------------------------------------------------ audit
 @router.get("/activity-logs", tags=["audit"])
 def activity_logs(

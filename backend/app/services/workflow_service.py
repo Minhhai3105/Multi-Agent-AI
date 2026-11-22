@@ -115,6 +115,7 @@ class WorkflowService:
                     "agent_id": s.agent_id,
                     "assignee_role": s.assignee_role,
                     "assignee_user_id": s.assignee_user_id,
+                    "instruction_override": s.instruction_override,
                     "config_json": s.config_json or {},
                 },
             )
@@ -162,6 +163,7 @@ class WorkflowService:
             agent_id = s.get("agent_id")
             assignee_role = s.get("assignee_role")
             assignee_user_id = s.get("assignee_user_id")
+            instruction_override = (s.get("instruction_override") or "").strip() or None
             if step_type == "agent":
                 agent = self.agents.get(agent_id) if agent_id else None
                 if agent is None:
@@ -185,6 +187,7 @@ class WorkflowService:
                     agent_id=agent_id,
                     assignee_role=assignee_role,
                     assignee_user_id=assignee_user_id,
+                    instruction_override=instruction_override,
                     config_json=s.get("config_json") or {},
                 )
             )
@@ -211,6 +214,7 @@ class WorkflowService:
                     "agent_name": agent_names.get(s.agent_id),
                     "assignee_role": s.assignee_role,
                     "assignee_user_id": s.assignee_user_id,
+                    "instruction_override": s.instruction_override,
                     "config_json": s.config_json or {},
                 }
                 for s in w.steps

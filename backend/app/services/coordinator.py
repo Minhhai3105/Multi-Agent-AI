@@ -36,6 +36,7 @@ from app.services.step_executors import (
     StepExecutor,
     StepResult,
     UserApprovalStepExecutor,
+    format_input,
 )
 
 log = logging.getLogger(__name__)
@@ -142,6 +143,8 @@ class WorkflowCoordinator:
         run = runs.get_run(step.workflow_run_id)
         if not actor.is_manager_or_admin and run.started_by != actor.id:
             raise Forbidden("Bạn chỉ được retry lượt chạy do chính mình khởi động", code="not_run_owner")
+        if run.status == "cancelled":
+            raise Conflict("Lượt chạy đã bị huỷ nên không thể retry", code="run_cancelled")
         claimed = runs.claim_step_run(
             step.id, "failed", "in_progress", error_message=None, started_at=utcnow(), finished_at=None
         )
@@ -158,6 +161,89 @@ class WorkflowCoordinator:
         self.scheduler.submit(self.execute_run, run.id, step.id, note)
         db.refresh(step)
         return step
+
+    def cancel_run(self, db: Session, actor: Actor, run_id: int, reason: str | None = None) -> WorkflowRun:
+        """FR3.4 - end a run that is still running (or failed and will not be retried).
+
+        Completed steps are kept; open user/approval tasks of the run are closed; an Agent
+        step that is executing right now finishes but its result no longer advances the run.
+        """
+        runs = RunRepository(db)
+        run = runs.get_run(run_id)
+        if run is None:
+            raise NotFound("Không tìm thấy lượt chạy")
+        if not actor.is_manager_or_admin and run.started_by != actor.id:
+            raise Forbidden("Bạn chỉ được huỷ lượt chạy do chính mình khởi động", code="not_run_owner")
+        note = (reason or "").strip() or "không có lý do"
+        message = f"cancelled: {actor.full_name} đã huỷ lượt chạy – {note}"
+        if not runs.claim_run(run_id, ("running", "failed"), "cancelled", error_message=message, finished_at=utcnow()):
+            raise Conflict("Chỉ huỷ được lượt chạy đang chạy hoặc đang lỗi", code="run_not_cancellable")
+        for step in runs.step_runs_of(run_id):
+            if step.status == "in_progress" and step.step_type != "agent":
+                runs.claim_step_run(step.id, "in_progress", "failed", error_message=message, finished_at=utcnow())
+        tasks = TaskRepository(db)
+        closed = 0
+        for task in tasks.by_run(run_id):
+            if task.status in ("todo", "in_progress"):
+                result = {**(task.result or {}), "cancelled": True, "comment": message}
+                if tasks.change_status(task.id, task.status, "failed", result=result):
+                    closed += 1
+        ActivityLogService(db).record(
+            actor.id, "workflow_run.cancel", "workflow_run", run_id,
+            f"Huỷ lượt chạy #{run_id}", {"reason": note, "closed_tasks": closed},
+        )
+        if run.started_by != actor.id:
+            NotificationAdapter(db).notify(
+                run.started_by, "Workflow đã bị huỷ", f"Lượt chạy #{run_id}: {message}", link=f"/runs/{run_id}"
+            )
+        db.commit()
+        db.expire_all()
+        return runs.get_run(run_id)
+
+    # ---------------------------------------------------------------- Agent tasks (FR4.2)
+    def schedule_agent_task(self, task_id: int) -> None:
+        self.scheduler.submit(self.execute_agent_task, task_id)
+
+    def execute_agent_task(self, task_id: int) -> None:
+        """Runs a manual task assigned to an Agent through the same Agent executor
+        (RAG, one automatic retry, timeout) used by workflow steps."""
+        executor: AgentStepExecutor = self.executors["agent"]  # type: ignore[assignment]
+        with self.session_factory() as db:
+            tasks = TaskRepository(db)
+            task = tasks.get(task_id)
+            if task is None or task.status != "in_progress":
+                return
+            cfg, error = executor.load_config(db, task.assigned_agent_id)
+            if cfg is None:
+                result = StepResult(FAILED, error=error)
+            else:
+                request = {"task": task.title}
+                if task.description:
+                    request["description"] = task.description
+                try:
+                    result = executor.run_agent(db, cfg, format_input(request), {"initial_input": request},
+                                                log_ref=f"task {task_id}")
+                except Exception as exc:  # never leave the task in_progress forever
+                    log.exception("Agent task %s crashed", task_id)
+                    db.rollback()
+                    result = StepResult(FAILED, error=f"internal_error: {type(exc).__name__}")
+            ok = result.status == DONE
+            payload = {**(result.output or {}), "executed_by": "agent"}
+            if not ok:
+                payload["error"] = result.error
+            if not tasks.change_status(task_id, "in_progress", "done" if ok else "failed", result=payload):
+                return
+            ActivityLogService(db).record(
+                None, "task.agent_done" if ok else "task.agent_fail", "task", task_id,
+                f"Agent {'hoàn thành' if ok else 'thất bại khi xử lý'} task '{task.title}'",
+                {"agent_id": task.assigned_agent_id, **({"error": result.error} if not ok else {})},
+            )
+            NotificationAdapter(db).notify(
+                task.created_by,
+                "Agent đã xử lý xong task" if ok else "Agent xử lý task thất bại",
+                task.title, link=f"/tasks?focus={task_id}",
+            )
+            db.commit()
 
     def recover_interrupted_runs(self) -> dict:
         """Risk R01 / 6.1.7. Called once at startup.
@@ -305,11 +391,13 @@ class WorkflowCoordinator:
             for src in out.get("sources") or []:
                 sources.append({**src, "step_order": s.step_order})
         final_text = next((x["text"] for x in reversed(summary) if x.get("text")), "")
-        runs.update_run(
-            run_id, status="completed", finished_at=utcnow(),
+        if not runs.claim_run(
+            run_id, ("running",), "completed", finished_at=utcnow(),
             current_step_order=steps[-1].step_order if steps else 0,
             final_result={"text": final_text, "steps": summary, "sources": sources},
-        )
+        ):
+            return  # cancelled meanwhile
+
         ActivityLogService(db).record(
             None, "workflow_run.complete", "workflow_run", run_id, f"Lượt chạy #{run_id} hoàn thành"
         )
@@ -322,7 +410,8 @@ class WorkflowCoordinator:
         runs = RunRepository(db)
         name = (step.step_snapshot or {}).get("name") or f"bước {step.step_order}"
         message = f"Bước {step.step_order} ({name}) thất bại – {error}"
-        runs.update_run(run_id, status="failed", error_message=message, finished_at=utcnow())
+        if not runs.claim_run(run_id, ("running",), "failed", error_message=message, finished_at=utcnow()):
+            return  # the run was cancelled while this step was executing
         ActivityLogService(db).record(
             None, "workflow_run.fail", "workflow_run", run_id, message,
             {"step_run_id": step.id, "step_order": step.step_order},

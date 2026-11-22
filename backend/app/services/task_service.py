@@ -37,8 +37,12 @@ StepTaskCallback = Callable[[int, int], None]
 
 
 class TaskService:
-    def __init__(self, db: Session, on_step_task_finished: StepTaskCallback | None = None):
+    def __init__(
+        self, db: Session, on_step_task_finished: StepTaskCallback | None = None,
+        on_agent_task_started: Callable[[int], None] | None = None,
+    ):
         self.db = db
+        self.on_agent_task_started = on_agent_task_started
         self.repo = TaskRepository(db)
         self.users = UserRepository(db)
         self.agents = AgentRepository(db)
@@ -185,6 +189,36 @@ class TaskService:
 
         if finished_step_task and self.on_step_task_finished:
             self.on_step_task_finished(task.step_run_id, task.id)
+        return self._decorate([task])[0]
+
+    def run_with_agent(self, actor: Actor, task_id: int) -> dict:
+        """FR4.2 / FR4.5: let the assigned Agent process a manual task (again after a failure).
+
+        The synchronous part only claims the task (todo|failed -> in_progress, 409 on races);
+        the Agent call runs in the background through the Workflow Coordinator.
+        """
+        require_roles(actor, "admin", "manager")
+        task = self._require(task_id)
+        if task.step_run_id:
+            raise ValidationFailed("Task của workflow được xử lý trong lượt chạy, không chạy riêng bằng Agent")
+        if not task.assigned_agent_id:
+            raise ValidationFailed("Task chưa được giao cho Agent nào", code="no_agent")
+        agent = self.agents.get(task.assigned_agent_id)
+        if agent is None or not agent.is_active:
+            raise ValidationFailed("Agent được giao không tồn tại hoặc đã bị vô hiệu hoá", code="invalid_agent")
+        old_status = task.status
+        if old_status not in ("todo", "failed"):
+            raise Conflict(f"Chỉ chạy được task ở trạng thái 'todo' hoặc 'failed' (hiện tại: '{old_status}')",
+                           code="invalid_transition")
+        if not self.repo.change_status(task.id, old_status, "in_progress", result=None):
+            raise Conflict("Task vừa được người khác cập nhật, hãy tải lại", code="concurrent_update")
+        self.audit.record(actor.id, "task.run_agent", "task", task.id,
+                          f"Giao Agent '{agent.name}' xử lý task '{task.title}'",
+                          {"agent_id": agent.id, "previous_status": old_status})
+        self.db.commit()
+        self.db.refresh(task)
+        if self.on_agent_task_started:
+            self.on_agent_task_started(task.id)
         return self._decorate([task])[0]
 
     # ---------------------------------------------------------------- helpers

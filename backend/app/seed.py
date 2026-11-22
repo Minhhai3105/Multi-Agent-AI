@@ -55,7 +55,9 @@ def seed_if_empty() -> bool:
         )
 
         def agent(name, role, instruction, collection=None, temperature=0.3):
-            a = Agent(name=name, role_name=role, instruction=instruction, model_name=model,
+            # FR2.2: the duty shown to users is the first sentence of the instruction.
+            duty = instruction.split(". ")[0].rstrip(".") + "."
+            a = Agent(name=name, role_name=role, description=duty, instruction=instruction, model_name=model,
                       temperature=temperature, knowledge_collection=collection, created_by=admin.id)
             db.add(a)
             return a

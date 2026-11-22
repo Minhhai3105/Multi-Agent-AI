@@ -152,6 +152,7 @@ class HistoryService:
                 "waiting_for_human": self.repo.waiting_runs(scope),
                 "completed": completed,
                 "failed": failed,
+                "cancelled": counts.get("cancelled", 0),
                 "success_rate": round(completed / finished * 100, 1) if finished else None,
             },
             "steps": self.repo.step_counts() if scope is None else None,
